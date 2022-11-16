@@ -6,7 +6,7 @@ Description: Development management infrastructure provision by this 'CloudForma
 Parameters:
   RepositoryLocationParameter:
     Type: String
-    Default: https://sachith_dickwella@bitbucket.org/cloudlock/traviard-main-repo.git
+    Default: https://github.com/sachithdickwella/insight-watch-client.git
     ConstraintDescription: Code build source repository location parameter. Preferably, should be a code
       repository URL.
   RepositoryArtifactsPath:
@@ -17,12 +17,13 @@ Parameters:
 Resources:
   CloudBuild:
     Type: AWS::CodeBuild::Project
+    DependsOn: GitHubSourceCredential
     Properties:
       Name: CloudBuildPipeline
-      Description: Traviard cloud repository's build pipeline which deploy artifacts to the maven repository.
+      Description: Repository's build pipeline which deploy artifacts to the maven repository.
       Artifacts:
         Type: S3
-        Location: !Ref TraviardMavenArtifactBucket
+        Location: !Ref BuildArtifactTargetBucket
         OverrideArtifactName: true
         Name: "/"
         NamespaceType: BUILD_ID
@@ -32,11 +33,9 @@ Resources:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/standard:4.0
         PrivilegedMode: true
-      ServiceRole: !Ref TraviardCodeBuildAccessRole
+      ServiceRole: !Ref CodeBuildAccessRole
       Source:
-        Auth:
-          Type: OAUTH
-        Type: BITBUCKET
+        Type: GITHUB
         Location: !Ref RepositoryLocationParameter
         GitCloneDepth: 1
         ReportBuildStatus: true
@@ -47,16 +46,11 @@ Resources:
           phases:
             install:
               runtime-versions:
-                java: corretto17
-              commands:
-                - wget https://download.java.net/java/GA/jdk14/076bab302c7b4508975440c56f6cc26a/36/GPL/openjdk-14_linux-x64_bin.tar.gz
-                - tar -xvf openjdk-14_linux-x64_bin.tar.gz --directory /root/ jdk-14
-                - rm -f openjdk-14_linux-x64_bin.tar.gz
-                - export JAVA_HOME=/root/jdk-14
+                java: corretto19
             pre_build:
               commands:
                 - mvn -version
-                - cd source/traviard-cloud
+                - cd source/insight-watch-client
             build:
               commands:
                 - echo "Build started on `date`."
@@ -73,17 +67,12 @@ Resources:
             paths:
               - "/root/.m2/**/*"
       BadgeEnabled: false
-      Triggers:
-        Webhook: true
-        FilterGroups:
-          - - Type: EVENT
-              Pattern: PUSH,PULL_REQUEST_MERGED
       LogsConfig:
         CloudWatchLogs:
-          GroupName: !Ref TraviardCodeBuildLogGroup
+          GroupName: !Ref CodeBuildLogGroup
           Status: ENABLED
 
-  TraviardCodeBuildAccessRole:
+  CodeBuildAccessRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -95,9 +84,9 @@ Resources:
                 - "codebuild.amazonaws.com"
             Action:
               - 'sts:AssumeRole'
-      Description: IAM role for the CodeBuid project to access resources.
+      Description: IAM role for the CodeBuild project to access resources.
       Policies:
-        - PolicyName: TraviardCodeBuildAccessRolePolicy
+        - PolicyName: CodeBuildAccessRolePolicy
           PolicyDocument:
             Version: 2012-10-17
             Statement:
@@ -105,10 +94,10 @@ Resources:
                 Resource:
                   - Fn::Join:
                       - ""
-                      - - !GetAtt [TraviardMavenArtifactBucket, Arn]
+                      - - !GetAtt [BuildArtifactTargetBucket, Arn]
                   - Fn::Join:
                       - ""
-                      - - !GetAtt [TraviardMavenArtifactBucket, Arn]
+                      - - !GetAtt [BuildArtifactTargetBucket, Arn]
                         - "/*"
                 Action:
                   - "s3:PutObject"
@@ -121,10 +110,10 @@ Resources:
                 Resource:
                   - Fn::Join:
                       - ""
-                      - - !GetAtt [TraviardCodeBuildLogGroup, Arn]
+                      - - !GetAtt [CodeBuildLogGroup, Arn]
                   - Fn::Join:
                       - ""
-                      - - !GetAtt [TraviardCodeBuildLogGroup, Arn]
+                      - - !GetAtt [CodeBuildLogGroup, Arn]
                         - "/*"
                 Action:
                   - "logs:CreateLogStream"
@@ -133,17 +122,17 @@ Resources:
   CodeBuildLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
-      LogGroupName: "TraviardCodeBuildLogGroup"
+      LogGroupName: "CodeBuildLogGroup"
       RetentionInDays: 30
 
-  TraviardMavenArtifactBucket:
+  BuildArtifactTargetBucket:
     Type: AWS::S3::Bucket
     Properties:
       BucketEncryption:
         ServerSideEncryptionConfiguration:
           - ServerSideEncryptionByDefault:
               SSEAlgorithm: AES256
-      BucketName: !Sub 'traviard-maven-artifacts-${AWS::Region}'
+      BucketName: !Sub 'maven-artifacts-${AWS::Region}'
       AccessControl: Private # Default
 
   GitHubSourceCredential:
@@ -151,4 +140,4 @@ Resources:
     Properties:
       AuthType: PERSONAL_ACCESS_TOKEN
       ServerType: GITHUB
-      Token: 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
+      Token: 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
